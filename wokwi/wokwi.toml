@@ -1,0 +1,7 @@
+[wokwi]
+version = 1
+firmware = "main.py"
+elf = ""
+
+# MicroPython firmware for ESP32
+# Wokwi automatically handles this for MicroPython projects

@@ -1,0 +1,63 @@
+# World Engine Configuration
+
+simulation:
+  tick_interval: 5.0          
+  startup_jitter_max: 5.0    
+  outside_temperature: 15.0   
+  time_acceleration: 60       
+
+  night_cycle:
+    enabled: true
+    base_temp: 15.0          
+    amplitude: 8.0            
+    coldest_hour: 4           
+
+building:
+  id: "b01"
+  floors: 10
+  rooms_per_floor: 20
+
+mqtt:
+  broker_host: "localhost"
+  broker_port: 1883
+  client_id_prefix: "world_engine"
+  topic_prefix: "campus"
+
+database:
+  path: "world_engine.db"
+  batch_interval: 30          
+
+physics:
+ 
+  k_env: 0.01                
+  k_hvac: 0.2                
+defaults:
+  initial_temp_min: 18.0
+  initial_temp_max: 26.0
+  initial_humidity_min: 30.0
+  initial_humidity_max: 60.0
+  target_temp: 22.0
+
+
+faults:
+  enabled: true
+  sensor_drift_probability: 0.02     
+  frozen_sensor_probability: 0.01    
+  telemetry_delay_probability: 0.03  
+  node_dropout_probability: 0.005    
+  drift_rate: 0.05                   # Max drift per tick (°C)
+  drift_max: 5.0                     
+  dropout_min_ticks: 3               
+  dropout_max_ticks: 20              
+  delay_min: 0.5                   
+  delay_max: 3.0                     
+# Fleet health monitoring
+health:
+  heartbeat_timeout: 60              # seconds of silence = unhealthy
+  check_interval: 10               
+  publish_interval: 30               # seconds between health reports
+
+# Performance metrics
+metrics:
+  enabled: true
+  publish_interval: 30               # seconds between metric reports

@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+*.egg-info/
+dist/
+build/
+
+# Database (we want fresh DB in container)
+*.db
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Local development
+.env
+.env.local
+
+# Wokwi (not needed in container)
+wokwi/
