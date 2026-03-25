@@ -126,5 +126,3 @@
 - [Docker Docs](https://docs.docker.com/)
 
 ---
-
-**Made with ❤️ for IoT education**
