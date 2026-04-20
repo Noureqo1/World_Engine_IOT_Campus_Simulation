@@ -27,6 +27,7 @@ ENV PATH=/root/.local/bin:$PATH
 
 # Copy application code
 COPY config.yaml .
+COPY config.phase2.yaml .
 COPY main.py .
 COPY world_engine/ ./world_engine/
 

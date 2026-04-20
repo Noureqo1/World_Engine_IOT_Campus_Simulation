@@ -1,0 +1,192 @@
+[
+  {
+    "id": "tab-f09",
+    "type": "tab",
+    "label": "Floor 09 Gateway",
+    "disabled": false,
+    "info": "MQTT and CoAP gateway for one campus floor."
+  },
+  {
+    "id": "mqtt-in-f09",
+    "type": "mqtt in",
+    "z": "tab-f09",
+    "name": "MQTT telemetry",
+    "topic": "campus/b01/f09/+/telemetry",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqtt-broker-f09",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "x": 160,
+    "y": 120,
+    "wires": [
+      [
+        "normalize-mqtt-f09"
+      ]
+    ]
+  },
+  {
+    "id": "coap-in-f09",
+    "type": "coap-in",
+    "z": "tab-f09",
+    "name": "CoAP observe",
+    "url": "coap://[node_ip]/f09/r201/telemetry",
+    "method": "observe",
+    "observe": true,
+    "x": 160,
+    "y": 200,
+    "wires": [
+      [
+        "normalize-coap-f09"
+      ]
+    ]
+  },
+  {
+    "id": "normalize-mqtt-f09",
+    "type": "function",
+    "z": "tab-f09",
+    "name": "Normalize MQTT payload",
+    "func": "const data = typeof msg.payload === 'string' ? JSON.parse(msg.payload) : msg.payload;\nmsg.payload = { protocol: 'mqtt', source: data.metadata.sensor_id, data };\nreturn msg;",
+    "outputs": 1,
+    "x": 410,
+    "y": 120,
+    "wires": [
+      [
+        "floor-merge-f09"
+      ]
+    ]
+  },
+  {
+    "id": "normalize-coap-f09",
+    "type": "function",
+    "z": "tab-f09",
+    "name": "Normalize CoAP payload",
+    "func": "const data = typeof msg.payload === 'string' ? JSON.parse(msg.payload) : msg.payload;\nmsg.payload = { protocol: 'coap', source: data.metadata.sensor_id, data };\nreturn msg;",
+    "outputs": 1,
+    "x": 410,
+    "y": 200,
+    "wires": [
+      [
+        "floor-merge-f09"
+      ]
+    ]
+  },
+  {
+    "id": "floor-merge-f09",
+    "type": "join",
+    "z": "tab-f09",
+    "name": "Merge streams",
+    "mode": "auto",
+    "build": "array",
+    "property": "payload",
+    "x": 640,
+    "y": 160,
+    "wires": [
+      [
+        "floor-average-f09"
+      ]
+    ]
+  },
+  {
+    "id": "floor-average-f09",
+    "type": "function",
+    "z": "tab-f09",
+    "name": "60s floor average",
+    "func": "const windowMs = 60000;\nconst now = Date.now();\nconst history = flow.get('history') || [];\nconst items = (Array.isArray(msg.payload) ? msg.payload : [msg.payload]).filter(Boolean);\nfor (const item of items) { history.push({ ts: now, item }); }\nconst recent = history.filter(entry => now - entry.ts <= windowMs);\nflow.set('history', recent);\nconst temps = recent.map(entry => entry.item?.data?.sensors?.temperature).filter(v => typeof v === 'number');\nconst hums = recent.map(entry => entry.item?.data?.sensors?.humidity).filter(v => typeof v === 'number');\nconst avg = arr => arr.length ? arr.reduce((sum, value) => sum + value, 0) / arr.length : 0;\nmsg.payload = {\n  floor: 'f09',\n  timestamp: now,\n  windowSeconds: 60,\n  temperatureAvg: Number(avg(temps).toFixed(2)),\n  humidityAvg: Number(avg(hums).toFixed(2)),\n  sampleCount: recent.length\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 870,
+    "y": 160,
+    "wires": [
+      [
+        "mqtt-out-summary-f09"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-out-summary-f09",
+    "type": "mqtt out",
+    "z": "tab-f09",
+    "name": "Publish floor summary",
+    "topic": "campus/b01/f09/summary",
+    "qos": "1",
+    "retain": true,
+    "broker": "mqtt-broker-f09",
+    "x": 1110,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "cmd-in-f09",
+    "type": "mqtt in",
+    "z": "tab-f09",
+    "name": "Command listen",
+    "topic": "campus/b01/f09/+/cmd",
+    "qos": "2",
+    "datatype": "auto",
+    "broker": "mqtt-broker-f09",
+    "x": 160,
+    "y": 300,
+    "wires": [
+      [
+        "cmd-router-f09"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-router-f09",
+    "type": "function",
+    "z": "tab-f09",
+    "name": "MQTT to CoAP PUT",
+    "func": "const cmd = typeof msg.payload === 'string' ? JSON.parse(msg.payload) : msg.payload;\nmsg.method = 'put';\nmsg.payload = JSON.stringify(cmd);\nmsg.url = 'coap://[gateway_ip]/f09/r201/actuators/hvac';\nreturn msg;",
+    "outputs": 1,
+    "x": 430,
+    "y": 300,
+    "wires": [
+      [
+        "coap-put-f09"
+      ]
+    ]
+  },
+  {
+    "id": "coap-put-f09",
+    "type": "coap request",
+    "z": "tab-f09",
+    "name": "CoAP PUT actuator",
+    "url": "coap://[gateway_ip]/f09/r201/actuators/hvac",
+    "method": "put",
+    "confirmable": true,
+    "x": 680,
+    "y": 300,
+    "wires": [
+      [
+        "mqtt-out-response-f09"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-out-response-f09",
+    "type": "mqtt out",
+    "z": "tab-f09",
+    "name": "Command response",
+    "topic": "campus/b01/f09/response",
+    "qos": "1",
+    "retain": false,
+    "broker": "mqtt-broker-f09",
+    "x": 960,
+    "y": 300,
+    "wires": []
+  },
+  {
+    "id": "mqtt-broker-f09",
+    "type": "mqtt-broker",
+    "name": "HiveMQ Backbone",
+    "broker": "hivemq",
+    "port": "1883",
+    "clientid": "gateway-f09",
+    "usetls": false,
+    "keepalive": "60",
+    "cleansession": true,
+    "protocolVersion": "5"
+  }
+]

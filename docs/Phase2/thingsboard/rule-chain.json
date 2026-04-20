@@ -1,0 +1,31 @@
+{
+  "name": "Phase 2 Campus Rule Chain",
+  "type": "ROOT",
+  "nodes": [
+    {
+      "name": "Input",
+      "type": "org.thingsboard.rule.engine.filter.TbMsgTypeNode",
+      "script": "msgType == 'POST_TELEMETRY_REQUEST'"
+    },
+    {
+      "name": "Normalize",
+      "type": "org.thingsboard.rule.engine.transform.TbScriptNode",
+      "script": "var payload = msg.get('payload');\nvar metadata = msg.get('metadata');\nreturn { payload: payload, metadata: metadata, floor: metadata.floor };"
+    },
+    {
+      "name": "Threshold Alarm",
+      "type": "org.thingsboard.rule.engine.filter.TbJsFilterNode",
+      "script": "return msg.payload.sensors && msg.payload.sensors.temperature > 28;"
+    },
+    {
+      "name": "Create Alarm",
+      "type": "org.thingsboard.rule.engine.action.TbCreateAlarmNode",
+      "alarmType": "HIGH_TEMPERATURE"
+    },
+    {
+      "name": "Route Telemetry",
+      "type": "org.thingsboard.rule.engine.flow.TbRuleChainNode",
+      "targetRuleChain": "Floor Telemetry Router"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 .PHONY: help setup install run run-mock docker-up docker-down docker-logs \
-        test-mqtt test-db clean restart subscribe health metrics db-status
+	test-mqtt test-db clean restart subscribe health metrics db-status \
+	phase2-check phase2-install phase2-setup phase2-generate phase2-up \
+	phase2-down phase2-logs phase2-ps phase2-run phase2-quickstart phase2-report
 
 # Default target
 .DEFAULT_GOAL := help
@@ -9,6 +11,13 @@ BLUE := \033[0;34m
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m # No Color
+
+# Cross-platform null device
+ifeq ($(OS),Windows_NT)
+NULL_DEVICE := NUL
+else
+NULL_DEVICE := /dev/null
+endif
 
 #==============================================================================
 # Help
@@ -81,6 +90,60 @@ docker-restart: ## Restart containers
 
 docker-ps: ## Show container status
 	docker-compose ps
+
+phase2-generate: ## Generate Phase 2 Node-RED / ThingsBoard artifacts
+	@echo "$(BLUE)Generating Phase 2 artifacts...$(NC)"
+	python Scripts/generate_phase2_artifacts.py
+	@echo "$(GREEN)Phase 2 artifacts written to docs/Phase2/$(NC)"
+
+phase2-check: ## Check local tools and required Phase 2 files
+	@echo "$(BLUE)Checking Phase 2 prerequisites...$(NC)"
+	@docker --version >$(NULL_DEVICE) 2>&1 || (echo "$(YELLOW)✗$(NC) docker not found" && exit 1)
+	@docker info >$(NULL_DEVICE) 2>&1 || (echo "$(YELLOW)✗$(NC) Docker daemon is not running (start Docker Desktop)" && exit 1)
+	@(docker compose version >$(NULL_DEVICE) 2>&1 || docker-compose --version >$(NULL_DEVICE) 2>&1) || (echo "$(YELLOW)✗$(NC) docker compose command not found" && exit 1)
+	@python -c "import os,sys; files=['docker-compose.phase2.yaml','config.phase2.yaml','Scripts/generate_phase2_artifacts.py']; missing=[f for f in files if not os.path.exists(f)]; print('$(GREEN)✓$(NC) required files present' if not missing else '$(YELLOW)✗$(NC) missing: ' + ', '.join(missing)); sys.exit(1 if missing else 0)"
+	@echo "$(GREEN)Phase 2 prerequisite check passed!$(NC)"
+
+phase2-install: ## Install Python dependencies for Phase 2 runtime
+	@echo "$(BLUE)Installing Python dependencies for Phase 2...$(NC)"
+	pip install -r requirements.txt
+	@echo "$(GREEN)Python dependencies installed!$(NC)"
+	@echo "$(YELLOW)Optional Node-RED dependency: npm install -g node-red-contrib-coap$(NC)"
+
+phase2-setup: phase2-check phase2-install phase2-generate ## Prepare local environment and artifacts for Phase 2
+	@echo "$(GREEN)Phase 2 setup complete!$(NC)"
+
+phase2-up: phase2-generate ## Start the Phase 2 stack
+	@echo "$(BLUE)Starting Phase 2 stack...$(NC)"
+	@(docker compose version >$(NULL_DEVICE) 2>&1 && docker compose -f docker-compose.phase2.yaml --profile phase2 up -d) || docker-compose -f docker-compose.phase2.yaml --profile phase2 up -d
+	@echo "$(GREEN)Phase 2 stack started!$(NC)"
+	@echo "$(YELLOW)Container status: make phase2-ps$(NC)"
+	@echo "$(YELLOW)Logs: make phase2-logs$(NC)"
+
+phase2-down: ## Stop the Phase 2 stack
+	@echo "$(BLUE)Stopping Phase 2 stack...$(NC)"
+	@(docker compose version >$(NULL_DEVICE) 2>&1 && docker compose -f docker-compose.phase2.yaml --profile phase2 down) || docker-compose -f docker-compose.phase2.yaml --profile phase2 down
+
+phase2-logs: ## Follow the Phase 2 container logs
+	@(docker compose version >$(NULL_DEVICE) 2>&1 && docker compose -f docker-compose.phase2.yaml --profile phase2 logs -f) || docker-compose -f docker-compose.phase2.yaml --profile phase2 logs -f
+
+phase2-ps: ## Show Phase 2 container status
+	@(docker compose version >$(NULL_DEVICE) 2>&1 && docker compose -f docker-compose.phase2.yaml --profile phase2 ps) || docker-compose -f docker-compose.phase2.yaml --profile phase2 ps
+
+phase2-run: phase2-setup phase2-up ## One command to setup and run Phase 2
+	@echo "$(GREEN)Phase 2 is running.$(NC)"
+
+phase2-quickstart: ## Print full Phase 2 setup and run command sequence
+	@echo "$(BLUE)Phase 2 quickstart commands:$(NC)"
+	@echo "  1. make phase2-setup"
+	@echo "  2. make phase2-up"
+	@echo "  3. make phase2-ps"
+	@echo "  4. make phase2-logs"
+	@echo "  5. make phase2-down"
+
+phase2-report: ## Show Phase 2 report inputs
+	@echo "$(BLUE)Phase 2 report inputs:$(NC)"
+	@sed -n '1,200p' docs/Phase2/report-data.md
 
 #==============================================================================
 # MQTT Testing

@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 import math
@@ -384,6 +385,20 @@ class WorldEngine:
         logger.info("Shutdown complete")
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse runtime arguments for Phase 1 and Phase 2 launches."""
+    parser = argparse.ArgumentParser(description="World Engine campus simulation")
+    parser.add_argument("--mock", action="store_true", help="Run Phase 1 without a live MQTT broker")
+    parser.add_argument("--phase2", action="store_true", help="Run the hybrid MQTT/CoAP Phase 2 runtime")
+    parser.add_argument("--config", default=None, help="Path to a YAML configuration file")
+    parser.add_argument(
+        "--generate-phase2-artifacts",
+        action="store_true",
+        help="Write the Node-RED, ThingsBoard, and HiveMQ export files and exit",
+    )
+    return parser.parse_args()
+
+
 def setup_signal_handlers(engine: WorldEngine, loop: asyncio.AbstractEventLoop) -> None:
     """Setup signal handlers for graceful shutdown."""
     def handle_signal(sig):
@@ -399,16 +414,28 @@ async def main():
     """Application entry point."""
     import os
 
-    use_mock = "--mock" in sys.argv
+    args = parse_args()
+
+    if args.generate_phase2_artifacts:
+        from pathlib import Path
+
+        from world_engine.phase2.artifacts import write_phase2_artifacts
+
+        workspace_root = Path(__file__).resolve().parent
+        output_root = workspace_root / "docs" / "Phase2"
+        write_phase2_artifacts(output_root)
+        logger.info("Phase 2 artifacts written to %s", output_root)
+        return
+
+    config_path = args.config or ("config.phase2.yaml" if args.phase2 else "config.yaml")
 
     try:
-        config = load_config("config.yaml")
-        logger.info("Loaded config.yaml")
+        config = load_config(config_path)
+        logger.info("Loaded %s", config_path)
     except FileNotFoundError:
-        logger.warning("config.yaml not found, using defaults")
+        logger.warning("%s not found, using defaults", config_path)
         config = get_default_config()
 
-    # Override MQTT settings from environment variables (for Docker)
     if os.environ.get("MQTT_HOST"):
         config.setdefault("mqtt", {})["broker_host"] = os.environ["MQTT_HOST"]
         logger.info(f"MQTT host overridden from env: {os.environ['MQTT_HOST']}")
@@ -417,7 +444,23 @@ async def main():
     if os.environ.get("DB_PATH"):
         config.setdefault("database", {})["path"] = os.environ["DB_PATH"]
 
-    if use_mock:
+    if args.phase2:
+        from world_engine.phase2.engine import HybridWorldEngine
+
+        logger.info("Running in Phase 2 hybrid mode")
+        engine = HybridWorldEngine(config)
+
+        loop = asyncio.get_running_loop()
+        setup_signal_handlers(engine, loop)
+
+        try:
+            await engine.run()
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt received")
+            await engine.shutdown()
+        return
+
+    if args.mock:
         logger.info("Running in MOCK mode (no MQTT broker required)")
 
     engine = WorldEngine(config)
@@ -426,7 +469,7 @@ async def main():
     setup_signal_handlers(engine, loop)
 
     try:
-        await engine.run(use_mock_mqtt=use_mock)
+        await engine.run(use_mock_mqtt=args.mock)
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
         await engine.shutdown()
@@ -448,6 +491,7 @@ if __name__ == "__main__":
 ║  Usage:                                                       ║
 ║    python main.py          - Run with MQTT broker             ║
 ║    python main.py --mock   - Run without MQTT broker          ║
+║    python main.py --phase2 - Run the hybrid MQTT/CoAP stack   ║
 ╚═══════════════════════════════════════════════════════════════╝
     """)
     asyncio.run(main())

@@ -1,0 +1,39 @@
+{
+  "title": "Phase 2 Fleet Health",
+  "state": {
+    "root": {
+      "widgets": [
+        {
+          "type": "timeseries",
+          "title": "Campus Temperature",
+          "datasource": "telemetry",
+          "entityAlias": "allDevices"
+        },
+        {
+          "type": "alarmTable",
+          "title": "Active Alarms",
+          "datasource": "alarms",
+          "entityAlias": "allDevices"
+        },
+        {
+          "type": "latestValues",
+          "title": "Fleet Status Grid",
+          "datasource": "latestTelemetry",
+          "entityAlias": "allDevices"
+        }
+      ]
+    }
+  },
+  "aliases": {
+    "allDevices": {
+      "entityType": "DEVICE",
+      "filter": {
+        "type": "entityList",
+        "entityList": [
+          "MQTT-ThermalSensor",
+          "CoAP-ThermalSensor"
+        ]
+      }
+    }
+  }
+}
