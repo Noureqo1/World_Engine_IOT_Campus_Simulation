@@ -1,0 +1,62 @@
+# HiveMQ ACL template for Phase 2
+# Replace usernames with provisioned node identities
+user floor-f01-mqtt
+topic readwrite campus/b01/f01/#
+topic read campus/b01/fleet/#
+user floor-f01-gateway
+topic read campus/b01/f01/#
+topic write campus/b01/f01/summary
+user floor-f02-mqtt
+topic readwrite campus/b01/f02/#
+topic read campus/b01/fleet/#
+user floor-f02-gateway
+topic read campus/b01/f02/#
+topic write campus/b01/f02/summary
+user floor-f03-mqtt
+topic readwrite campus/b01/f03/#
+topic read campus/b01/fleet/#
+user floor-f03-gateway
+topic read campus/b01/f03/#
+topic write campus/b01/f03/summary
+user floor-f04-mqtt
+topic readwrite campus/b01/f04/#
+topic read campus/b01/fleet/#
+user floor-f04-gateway
+topic read campus/b01/f04/#
+topic write campus/b01/f04/summary
+user floor-f05-mqtt
+topic readwrite campus/b01/f05/#
+topic read campus/b01/fleet/#
+user floor-f05-gateway
+topic read campus/b01/f05/#
+topic write campus/b01/f05/summary
+user floor-f06-mqtt
+topic readwrite campus/b01/f06/#
+topic read campus/b01/fleet/#
+user floor-f06-gateway
+topic read campus/b01/f06/#
+topic write campus/b01/f06/summary
+user floor-f07-mqtt
+topic readwrite campus/b01/f07/#
+topic read campus/b01/fleet/#
+user floor-f07-gateway
+topic read campus/b01/f07/#
+topic write campus/b01/f07/summary
+user floor-f08-mqtt
+topic readwrite campus/b01/f08/#
+topic read campus/b01/fleet/#
+user floor-f08-gateway
+topic read campus/b01/f08/#
+topic write campus/b01/f08/summary
+user floor-f09-mqtt
+topic readwrite campus/b01/f09/#
+topic read campus/b01/fleet/#
+user floor-f09-gateway
+topic read campus/b01/f09/#
+topic write campus/b01/f09/summary
+user floor-f10-mqtt
+topic readwrite campus/b01/f10/#
+topic read campus/b01/fleet/#
+user floor-f10-gateway
+topic read campus/b01/f10/#
+topic write campus/b01/f10/summary

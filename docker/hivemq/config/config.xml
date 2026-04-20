@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hivemq xmlns="http://www.hivemq.com/schema/hivemq">
+  <listeners>
+    <tcp-listener>
+      <port>1883</port>
+      <bind-address>0.0.0.0</bind-address>
+    </tcp-listener>
+    <tls-tcp-listener>
+      <port>8883</port>
+      <bind-address>0.0.0.0</bind-address>
+      <truststore>conf/certs/ca.p12</truststore>
+      <keystore>conf/certs/mqtt-server.p12</keystore>
+    </tls-tcp-listener>
+    <websocket-listener>
+      <port>8080</port>
+      <bind-address>0.0.0.0</bind-address>
+    </websocket-listener>
+  </listeners>
+  <security>
+    <allow-anonymous>false</allow-anonymous>
+  </security>
+</hivemq>

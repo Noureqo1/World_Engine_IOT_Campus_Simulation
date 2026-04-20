@@ -1,0 +1,170 @@
+# World Engine Phase 2 Hybrid Deployment
+#
+# Start with:
+#   docker compose -f docker-compose.phase2.yaml --profile phase2 up -d
+
+x-node-red-base: &node_red_base
+  image: nodered/node-red:3.1
+  restart: unless-stopped
+  depends_on:
+    - hivemq
+    - thingsboard
+  environment:
+    TZ: UTC
+    FLOORS: 10
+    MQTT_BROKER: hivemq
+    MQTT_PORT: 1883
+
+services:
+  hivemq:
+    image: hivemq/hivemq-ce:latest
+    container_name: phase2_hivemq
+    profiles: ["phase2"]
+    ports:
+      - "18830:1883"
+      - "8883:8883"
+      - "8080:8080"
+    volumes:
+      - ./docker/hivemq/config:/opt/hivemq/conf:ro
+      - hivemq_data:/opt/hivemq/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: phase2_thingsboard_postgres
+    profiles: ["phase2"]
+    environment:
+      POSTGRES_DB: thingsboard
+      POSTGRES_USER: thingsboard
+      POSTGRES_PASSWORD: tbpass
+    volumes:
+      - tb_pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  thingsboard:
+    image: thingsboard/tb-postgres:latest
+    container_name: phase2_thingsboard
+    profiles: ["phase2"]
+    depends_on:
+      - postgres
+      - hivemq
+    ports:
+      - "8081:8080"
+    environment:
+      TB_QUEUE_TYPE: in-memory
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
+      SPRING_DATASOURCE_USERNAME: thingsboard
+      SPRING_DATASOURCE_PASSWORD: tbpass
+      MQTT_BIND_ADDRESS: 0.0.0.0
+    volumes:
+      - tb_data:/data
+    restart: unless-stopped
+
+  world-engine-phase2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: phase2_world_engine
+    profiles: ["phase2"]
+    depends_on:
+      - hivemq
+      - thingsboard
+    environment:
+      MQTT_HOST: hivemq
+      MQTT_PORT: 1883
+      DB_PATH: /app/data/world_engine_phase2.db
+    volumes:
+      - world_engine_phase2_data:/app/data
+      - ./config.phase2.yaml:/app/config.phase2.yaml:ro
+    command: ["python", "main.py", "--phase2", "--config", "/app/config.phase2.yaml"]
+    restart: unless-stopped
+
+  gateway-f01:
+    <<: *node_red_base
+    container_name: phase2_gateway_f01
+    profiles: ["phase2"]
+    ports: ["1880:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-01-gateway.json:/data/flows.json
+
+  gateway-f02:
+    <<: *node_red_base
+    container_name: phase2_gateway_f02
+    profiles: ["phase2"]
+    ports: ["1881:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-02-gateway.json:/data/flows.json
+
+  gateway-f03:
+    <<: *node_red_base
+    container_name: phase2_gateway_f03
+    profiles: ["phase2"]
+    ports: ["1882:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-03-gateway.json:/data/flows.json
+
+  gateway-f04:
+    <<: *node_red_base
+    container_name: phase2_gateway_f04
+    profiles: ["phase2"]
+    ports: ["1890:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-04-gateway.json:/data/flows.json
+
+  gateway-f05:
+    <<: *node_red_base
+    container_name: phase2_gateway_f05
+    profiles: ["phase2"]
+    ports: ["1884:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-05-gateway.json:/data/flows.json
+
+  gateway-f06:
+    <<: *node_red_base
+    container_name: phase2_gateway_f06
+    profiles: ["phase2"]
+    ports: ["1885:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-06-gateway.json:/data/flows.json
+
+  gateway-f07:
+    <<: *node_red_base
+    container_name: phase2_gateway_f07
+    profiles: ["phase2"]
+    ports: ["1886:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-07-gateway.json:/data/flows.json
+
+  gateway-f08:
+    <<: *node_red_base
+    container_name: phase2_gateway_f08
+    profiles: ["phase2"]
+    ports: ["1887:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-08-gateway.json:/data/flows.json
+
+  gateway-f09:
+    <<: *node_red_base
+    container_name: phase2_gateway_f09
+    profiles: ["phase2"]
+    ports: ["1888:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-09-gateway.json:/data/flows.json
+
+  gateway-f10:
+    <<: *node_red_base
+    container_name: phase2_gateway_f10
+    profiles: ["phase2"]
+    ports: ["1889:1880"]
+    volumes:
+      - ./docs/Phase2/node-red/floor-10-gateway.json:/data/flows.json
+
+volumes:
+  hivemq_data:
+  tb_pg_data:
+  tb_data:
+  world_engine_phase2_data:
+
+networks:
+  default:
+    name: world_engine_phase2_net

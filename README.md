@@ -57,6 +57,14 @@
 - ✅ **WiFi + MQTT** connectivity
 - ✅ **Matching JSON schema** with simulation
 
+### Phase 2 (Hybrid MQTT + CoAP)
+- ✅ **100 MQTT nodes** with gmqtt and persistent connections
+- ✅ **100 CoAP nodes** with aiocoap observe resources and PUT actuators
+- ✅ **10 Node-RED floor gateways** with MQTT/CoAP translation flows
+- ✅ **ThingsBoard export bundle** for devices, assets, relations, rules, and dashboards
+- ✅ **HiveMQ ACL and TLS/DTLS config templates** for the campus backbone
+- ✅ **Report prompt and evidence bundle** under [docs/Phase2](docs/Phase2)
+
 ---
 
 ## 🏗️ Architecture

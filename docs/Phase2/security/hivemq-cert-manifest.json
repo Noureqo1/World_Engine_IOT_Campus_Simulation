@@ -1,0 +1,16 @@
+{
+  "mqtt": {
+    "tlsPort": 8883,
+    "certificate": "docker/certs/mqtt-server.crt",
+    "privateKey": "docker/certs/mqtt-server.key",
+    "caBundle": "docker/certs/ca.crt"
+  },
+  "coap": {
+    "dtlsPort": 5684,
+    "pskFile": "docker/certs/coap-psk.json",
+    "pskTemplate": {
+      "identity": "coap-b01-f01-r201",
+      "secret": "psk-b01-f01-r201"
+    }
+  }
+}

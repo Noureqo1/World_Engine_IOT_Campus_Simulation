@@ -56,6 +56,7 @@ class Room:
     building: str
     floor: int
     room_number: int
+    protocol: str = "mqtt"
 
     # Physics coefficients (from config)
     k_env: float = 0.01
@@ -102,6 +103,36 @@ class Room:
                 f"room_{self.room_number:03d}/telemetry"
             )
         return self._mqtt_topic
+
+    @property
+    def phase2_mqtt_topic(self) -> str:
+        """Generate the Phase 2 MQTT telemetry topic."""
+        return f"campus/{self.building}/f{self.floor:02d}/r{self.room_number:03d}/telemetry"
+
+    @property
+    def phase2_command_topic(self) -> str:
+        """Generate the Phase 2 MQTT command topic."""
+        return f"campus/{self.building}/f{self.floor:02d}/r{self.room_number:03d}/cmd"
+
+    @property
+    def phase2_status_topic(self) -> str:
+        """Generate the Phase 2 MQTT status topic."""
+        return f"campus/{self.building}/f{self.floor:02d}/r{self.room_number:03d}/status"
+
+    @property
+    def phase2_coap_path(self) -> str:
+        """Generate the Phase 2 CoAP resource path."""
+        return f"/f{self.floor:02d}/r{self.room_number:03d}"
+
+    @property
+    def phase2_coap_telemetry_path(self) -> str:
+        """Generate the Phase 2 CoAP telemetry resource path."""
+        return f"/f{self.floor:02d}/r{self.room_number:03d}/telemetry"
+
+    @property
+    def phase2_coap_actuator_path(self) -> str:
+        """Generate the Phase 2 CoAP actuator resource path."""
+        return f"/f{self.floor:02d}/r{self.room_number:03d}/actuators/hvac"
 
     def update_physics(self) -> None:
         """
