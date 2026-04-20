@@ -29,16 +29,6 @@ class FaultType(Enum):
 
 @dataclass
 class FaultState:
-    """
-    Tracks the current fault state for a single room.
-
-    Attributes:
-        active_faults: Set of currently active fault types
-        drift_bias: Accumulated temperature drift (Celsius)
-        frozen_values: Dict of frozen sensor readings
-        dropout_remaining: Ticks remaining in dropout period
-        delay_seconds: Current telemetry delay amount
-    """
     active_faults: set[FaultType] = field(default_factory=set)
     drift_bias: float = 0.0
     frozen_values: dict[str, float] = field(default_factory=dict)
@@ -93,26 +83,6 @@ class FaultConfig:
 
 
 class FaultInjector:
-    """
-    Manages fault injection for IoT room simulations.
-
-    This class maintains fault states per room and provides methods
-    to inject, update, and apply faults during simulation ticks.
-
-    Usage:
-        injector = FaultInjector(config)
-
-        # Each tick:
-        if injector.should_skip_tick(room_id):  # Check for dropout
-            continue
-
-        injector.update_faults(room_id)         # Roll for new faults
-        temp = injector.apply_sensor_faults(room_id, actual_temp)
-
-        delay = injector.get_telemetry_delay(room_id)
-        if delay > 0:
-            await asyncio.sleep(delay)
-    """
 
     def __init__(self, config: FaultConfig | None = None):
         """
