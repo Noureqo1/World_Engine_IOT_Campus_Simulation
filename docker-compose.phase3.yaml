@@ -1,0 +1,118 @@
+# Phase 3 Docker Compose Configuration
+# Includes: World Engine, HiveMQ, Node-RED, ThingsBoard
+
+services:
+  # Phase 3 World Engine with Digital Twin and OTA
+  world-engine-phase3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: world-engine-phase3
+    volumes:
+      - ./world_engine:/app/world_engine
+      - ./config.phase3.yaml:/app/config.phase3.yaml
+      - ./world_engine_phase3.db:/app/world_engine_phase3.db
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - CONFIG_FILE=config.phase3.yaml
+      - MQTT_HOST=mosquitto
+    depends_on:
+      - mosquitto
+      - nodered
+      - thingsboard
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  # MQTT Broker (Mosquitto)
+  mosquitto:
+    image: eclipse-mosquitto:1.6.15
+    container_name: mosquitto
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # WebSocket
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  # Node-RED IoT Gateway
+  nodered:
+    image: nodered/node-red:latest
+    container_name: nodered
+    ports:
+      - "1880:1880"
+    environment:
+      - NODE_RED_ENABLE_PROJECTS=false
+      - NODE_RED_ENABLE_SAFE_MODE=false
+    volumes:
+      - nodered-data:/data
+      - ./flows/phase3_gateway.json:/data/flows.json
+    networks:
+      - iot-network
+    depends_on:
+      - mosquitto
+      - thingsboard
+    restart: unless-stopped
+
+  # ThingsBoard Digital Twin Platform
+  thingsboard:
+    image: thingsboard/tb-postgres:3.6.4
+    container_name: thingsboard
+    ports:
+      - "8080:9090"   # HTTP
+      - "1884:1883"   # MQTT (ThingsBoard also has MQTT) - changed to avoid conflict with HiveMQ
+      - "5683:5683/udp"   # CoAP
+    environment:
+      - TB_QUEUE_TYPE=in-memory
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/thingsboard
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=none
+    volumes:
+      - thingsboard-data:/data
+      - thingsboard-logs:/var/log/thingsboard
+    depends_on:
+      - postgres
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  # PostgreSQL for ThingsBoard
+  postgres:
+    image: postgres:15
+    container_name: postgres-thingsboard
+    environment:
+      - POSTGRES_DB=thingsboard
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  # Redis for caching (optional, for enhanced performance)
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+networks:
+  iot-network:
+    driver: bridge
+
+volumes:
+  mosquitto-data:
+  mosquitto-logs:
+  nodered-data:
+  thingsboard-data:
+  thingsboard-logs:
+  postgres-data:
+  redis-data:

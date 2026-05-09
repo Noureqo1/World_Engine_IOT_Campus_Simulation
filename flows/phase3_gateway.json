@@ -1,0 +1,398 @@
+[
+    {
+        "id": "phase3-iot-gateway",
+        "type": "tab",
+        "label": "Phase 3 IoT Gateway",
+        "disabled": false,
+        "info": "Node-RED IoT Gateway for Phase 3: Digital Twin & Secure Fleet Simulation"
+    },
+    {
+        "id": "mqtt-in-telemetry",
+        "type": "mqtt in",
+        "z": "phase3-iot-gateway",
+        "name": "Telemetry Input",
+        "topic": "campus/+/+/+/telemetry",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "hivemq-broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 100,
+        "wires": [
+            [
+                "parse-telemetry",
+                "log-telemetry"
+            ]
+        ]
+    },
+    {
+        "id": "hivemq-broker",
+        "type": "mqtt-broker",
+        "name": "Local Mosquitto",
+        "broker": "localhost",
+        "port": "1883",
+        "clientid": "nodered-gateway",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "parse-telemetry",
+        "type": "function",
+        "z": "phase3-iot-gateway",
+        "name": "Parse & Enrich",
+        "func": "// Parse telemetry and enrich with digital twin metadata\nmsg.payload.timestamp = new Date().toISOString();\nmsg.payload.gateway_processed = true;\n\n// Extract room ID from topic\nvar topicParts = msg.topic.split('/');\nvar building = topicParts[1];\nvar floor = topicParts[2];\nvar room = topicParts[3];\n\nmsg.room_id = building + '-f' + floor.replace('f', '').padStart(2, '0') + '-r' + room.replace('r', '').padStart(3, '0');\nmsg.building = building;\nmsg.floor = floor;\nmsg.room = room;\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 100,
+        "wires": [
+            [
+                "thingsboard-telemetry",
+                "calculate-floor-aggregates"
+            ]
+        ]
+    },
+    {
+        "id": "thingsboard-telemetry",
+        "type": "http request",
+        "z": "phase3-iot-gateway",
+        "name": "Send to ThingsBoard",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://thingsboard:9090/api/v1/${JWT_TOKEN}/telemetry",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "valueType": "message",
+                "fieldType": "header",
+                "fieldName": "Content-Type",
+                "value": "content-type"
+            }
+        ],
+        "x": 600,
+        "y": 80,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "calculate-floor-aggregates",
+        "type": "function",
+        "z": "phase3-iot-gateway",
+        "name": "Floor Aggregation",
+        "func": "// Store telemetry for floor-level aggregation\nvar context = this.context;\nvar floorKey = msg.building + '-' + msg.floor;\n\n// Initialize floor data if not exists\nif (!context.get(floorKey)) {\n    context.set(floorKey, {\n        temperatures: [],\n        humidity: [],\n        occupancy: 0,\n        roomCount: 0\n    });\n}\n\nvar floorData = context.get(floorKey);\n\n// Add current reading\nif (msg.payload.sensors.temperature) {\n    floorData.temperatures.push(msg.payload.sensors.temperature);\n}\nif (msg.payload.sensors.humidity) {\n    floorData.humidity.push(msg.payload.sensors.humidity);\n}\nif (msg.payload.sensors.occupancy) {\n    floorData.occupancy++;\n}\nfloorData.roomCount++;\n\n// Calculate aggregates\nvar aggregates = {\n    floor_id: floorKey,\n    avg_temperature: floorData.temperatures.reduce((a, b) => a + b, 0) / floorData.temperatures.length,\n    avg_humidity: floorData.humidity.reduce((a, b) => a + b, 0) / floorData.humidity.length,\n    occupancy_rate: (floorData.occupancy / floorData.roomCount) * 100,\n    timestamp: new Date().toISOString()\n};\n\nmsg.payload = aggregates;\nmsg.topic = 'floor/aggregates/' + floorKey;\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 180,
+        "wires": [
+            [
+                "mqtt-floor-aggregates"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt-floor-aggregates",
+        "type": "mqtt out",
+        "z": "phase3-iot-gateway",
+        "name": "Publish Floor Aggregates",
+        "topic": "",
+        "qos": "1",
+        "retain": false,
+        "broker": "hivemq-broker",
+        "x": 600,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "mqtt-in-commands",
+        "type": "mqtt in",
+        "z": "phase3-iot-gateway",
+        "name": "Command Input",
+        "topic": "campus/+/+/+/cmd",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "hivemq-broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 280,
+        "wires": [
+            [
+                "process-command"
+            ]
+        ]
+    },
+    {
+        "id": "process-command",
+        "type": "function",
+        "z": "phase3-iot-gateway",
+        "name": "Process Command",
+        "func": "// Process incoming commands from ThingsBoard dashboard\n// Add command ID for idempotency\nmsg.payload.command_id = Date.now().toString(36) + Math.random().toString(36).substr(2);\nmsg.payload.timestamp = new Date().toISOString();\n\n// Log command for audit\nmsg.payload.gateway_audit = {\n    processed_by: 'nodered-gateway',\n    timestamp: new Date().toISOString()\n};\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 280,
+        "wires": [
+            [
+                "mqtt-command-out"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt-command-out",
+        "type": "mqtt out",
+        "z": "phase3-iot-gateway",
+        "name": "Forward Command",
+        "topic": "",
+        "qos": "2",
+        "retain": false,
+        "broker": "hivemq-broker",
+        "x": 600,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "mqtt-in-ota",
+        "type": "mqtt in",
+        "z": "phase3-iot-gateway",
+        "name": "OTA Updates",
+        "topic": "campus/+/+/ota/config",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "hivemq-broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 380,
+        "wires": [
+            [
+                "verify-ota-hash"
+            ]
+        ]
+    },
+    {
+        "id": "verify-ota-hash",
+        "type": "function",
+        "z": "phase3-iot-gateway",
+        "name": "Verify SHA-256",
+        "func": "// Verify SHA-256 hash of OTA update\nvar crypto = require('crypto');\n\n// Create hash of payload (excluding the hash field itself)\nvar payloadCopy = JSON.parse(JSON.stringify(msg.payload));\nvar providedHash = payloadCopy.hash;\ndelete payloadCopy.hash;\n\n// Calculate hash\nvar payloadString = JSON.stringify(payloadCopy, Object.keys(payloadCopy).sort());\nvar calculatedHash = crypto.createHash('sha256').update(payloadString).digest('hex');\n\nmsg.ota_verification = {\n    provided_hash: providedHash,\n    calculated_hash: calculatedHash,\n    valid: calculatedHash === providedHash,\n    timestamp: new Date().toISOString()\n};\n\nif (!msg.ota_verification.valid) {\n    msg.payload.security_alert = {\n        type: 'TAMPERING_DETECTED',\n        update_id: msg.payload.update_id,\n        details: msg.ota_verification\n    };\n    // Send to ThingsBoard security alert topic\n    msg.topic = 'security/alerts';\n} else {\n    msg.topic = 'ota/verified';\n}\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 380,
+        "wires": [
+            [
+                "ota-security-alert",
+                "ota-forward"
+            ]
+        ]
+    },
+    {
+        "id": "ota-security-alert",
+        "type": "switch",
+        "z": "phase3-iot-gateway",
+        "name": "Security Alert?",
+        "property": "payload.security_alert",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "truthy"
+            },
+            {
+                "t": "falsy"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 550,
+        "y": 360,
+        "wires": [
+            [
+                "mqtt-security-alert"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "mqtt-security-alert",
+        "type": "mqtt out",
+        "z": "phase3-iot-gateway",
+        "name": "Security Alert",
+        "topic": "",
+        "qos": "2",
+        "retain": true,
+        "broker": "hivemq-broker",
+        "x": 750,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "ota-forward",
+        "type": "mqtt out",
+        "z": "phase3-iot-gateway",
+        "name": "Forward OTA",
+        "topic": "",
+        "qos": "1",
+        "retain": false,
+        "broker": "hivemq-broker",
+        "x": 600,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "mqtt-in-shadow-sync",
+        "type": "mqtt in",
+        "z": "phase3-iot-gateway",
+        "name": "Shadow Sync",
+        "topic": "campus/+/+/+/shadow",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "hivemq-broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 500,
+        "wires": [
+            [
+                "compare-shadow-states"
+            ]
+        ]
+    },
+    {
+        "id": "compare-shadow-states",
+        "type": "function",
+        "z": "phase3-iot-gateway",
+        "name": "Compare States",
+        "func": "// Compare desired vs reported states\nvar desired = msg.payload.desired || {};\nvar reported = msg.payload.reported || {};\n\nvar mismatches = [];\n\n// Check HVAC mode\nif (desired.hvac_mode && desired.hvac_mode !== reported.hvac_mode) {\n    mismatches.push({\n        attribute: 'hvac_mode',\n        desired: desired.hvac_mode,\n        reported: reported.hvac_mode\n    });\n}\n\n// Check lighting dimmer\nif (desired.lighting_dimmer !== undefined && desired.lighting_dimmer !== reported.lighting_dimmer) {\n    mismatches.push({\n        attribute: 'lighting_dimmer',\n        desired: desired.lighting_dimmer,\n        reported: reported.lighting_dimmer\n    });\n}\n\n// Check target temperature\nif (desired.target_temp !== undefined && Math.abs(desired.target_temp - (reported.target_temp || 0)) > 0.5) {\n    mismatches.push({\n        attribute: 'target_temp',\n        desired: desired.target_temp,\n        reported: reported.target_temp\n    });\n}\n\nmsg.shadow_status = {\n    room_id: msg.room_id,\n    sync_status: mismatches.length === 0 ? 'synced' : (mismatches.length >= 3 ? 'conflict' : 'out_of_sync'),\n    mismatches: mismatches,\n    timestamp: new Date().toISOString()\n};\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 500,
+        "wires": [
+            [
+                "mqtt-shadow-status"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt-shadow-status",
+        "type": "mqtt out",
+        "z": "phase3-iot-gateway",
+        "name": "Shadow Status",
+        "topic": "",
+        "qos": "1",
+        "retain": false,
+        "broker": "hivemq-broker",
+        "x": 600,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "log-telemetry",
+        "type": "debug",
+        "z": "phase3-iot-gateway",
+        "name": "Log Telemetry",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 350,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "http-in-dashboard",
+        "type": "http in",
+        "z": "phase3-iot-gateway",
+        "name": "Dashboard API",
+        "url": "/api/sync-status",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 150,
+        "y": 600,
+        "wires": [
+            [
+                "get-sync-status"
+            ]
+        ]
+    },
+    {
+        "id": "get-sync-status",
+        "type": "function",
+        "z": "phase3-iot-gateway",
+        "name": "Get Sync Status",
+        "func": "// Return shadow sync status for dashboard\n// In production, this would query a database\nmsg.payload = {\n    total_devices: 200,\n    synced: 185,\n    out_of_sync: 12,\n    conflicts: 3,\n    offline: 5,\n    sync_rate: 92.5,\n    timestamp: new Date().toISOString()\n};\n\nmsg.headers = {\n    'Content-Type': 'application/json'\n};\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 600,
+        "wires": [
+            [
+                "http-response"
+            ]
+        ]
+    },
+    {
+        "id": "http-response",
+        "type": "http response",
+        "z": "phase3-iot-gateway",
+        "name": "Response",
+        "statusCode": "",
+        "headers": {},
+        "x": 550,
+        "y": 600,
+        "wires": []
+    }
+]
