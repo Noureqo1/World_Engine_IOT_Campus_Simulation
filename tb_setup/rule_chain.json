@@ -1,0 +1,45 @@
+{
+  "ruleChain": {
+    "name": "Floor Avg Temperature",
+    "type": "CORE",
+    "firstRuleNodeId": { "entityType": "RULE_NODE", "id": "node-entry" },
+    "debugMode": false
+  },
+  "metadata": {
+    "nodes": [
+      {
+        "id": "node-entry",
+        "type": "org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode",
+        "name": "Message Type Switch",
+        "configuration": {},
+        "additionalInfo": { "description": "Routes POST_TELEMETRY_REQUEST" }
+      },
+      {
+        "id": "node-script",
+        "type": "org.thingsboard.rule.engine.transform.TbTransformMsgNode",
+        "name": "Calculate floor avg",
+        "configuration": {
+          "jsScript": "// يحسب المتوسط من كل الـ child rooms\nvar sum = 0;\nvar count = 0;\nif (msg.temperature !== undefined) {\n    sum += msg.temperature;\n    count++;\n}\nvar avg = count > 0 ? Math.round(sum / count * 100) / 100 : 0;\nmsg.floor_avg_temperature = avg;\nreturn { msg: msg, metadata: metadata, msgType: msgType };"
+        }
+      },
+      {
+        "id": "node-save",
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save floor telemetry",
+        "configuration": {
+          "defaultTTL": 0
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromIndex": 0, "toIndex": 1,
+        "type": "Post telemetry"
+      },
+      {
+        "fromIndex": 1, "toIndex": 2,
+        "type": "Success"
+      }
+    ]
+  }
+}
