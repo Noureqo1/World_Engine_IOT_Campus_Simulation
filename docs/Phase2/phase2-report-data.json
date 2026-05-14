@@ -1,0 +1,47 @@
+{
+  "topology": {
+    "floors": 10,
+    "mqttNodes": 100,
+    "coapNodes": 100,
+    "gateways": 10,
+    "protocolSplitPerGateway": {
+      "mqtt": 10,
+      "coap": 10
+    }
+  },
+  "messaging": {
+    "mqttTelemetryTopic": "campus/b01/f##/r###/telemetry",
+    "mqttCommandTopic": "campus/b01/f##/r###/cmd",
+    "coapTelemetryUri": "coap://[node_ip]/f##/r###/telemetry",
+    "coapCommandUri": "coap://[gateway_ip]/f##/r###/actuators/hvac",
+    "mqttCommandQoS": 2,
+    "coapAlertType": "CON"
+  },
+  "reliability": {
+    "duplicateStrategy": "Idempotency keys with command_id plus floor-local dedup cache",
+    "heartbeatTimeoutSeconds": 60,
+    "coapDeadThresholdSeconds": 60,
+    "summaryWindowSeconds": 60
+  },
+  "security": {
+    "mqtt": {
+      "tlsPort": 8883,
+      "certificate": "docker/certs/mqtt-server.crt",
+      "privateKey": "docker/certs/mqtt-server.key",
+      "caBundle": "docker/certs/ca.crt"
+    },
+    "coap": {
+      "dtlsPort": 5684,
+      "pskFile": "docker/certs/coap-psk.json",
+      "pskTemplate": {
+        "identity": "coap-b01-f01-r201",
+        "secret": "psk-b01-f01-r201"
+      }
+    }
+  },
+  "performanceTargets": {
+    "rttTargetMs": 500,
+    "mqttClientsTarget": 100,
+    "packetLossTarget": 0
+  }
+}

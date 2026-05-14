@@ -49,7 +49,8 @@ services:
       - postgres
       - hivemq
     ports:
-      - "8081:8080"
+      - "8081:9090"
+      - "18831:1883"
     environment:
       TB_QUEUE_TYPE: in-memory
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
@@ -70,7 +71,7 @@ services:
       - hivemq
       - thingsboard
     environment:
-      MQTT_HOST: hivemq
+      MQTT_HOST: thingsboard
       MQTT_PORT: 1883
       DB_PATH: /app/data/world_engine_phase2.db
     volumes:

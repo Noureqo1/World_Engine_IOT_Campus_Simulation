@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "node-red-contrib-coap": "^0.7.0"
+  }
+}

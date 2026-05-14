@@ -70,7 +70,7 @@ phase2:
   heartbeat_timeout_seconds: 60
   dedup_cache_ttl_seconds: 30
   network:
-    mqtt_host: "hivemq"
+    mqtt_host: "thingsboard"
     mqtt_port: 1883
     mqtt_tls_port: 8883
     coap_bind_host: "0.0.0.0"
@@ -79,3 +79,14 @@ phase2:
     mqtt_username_prefix: "mqtt_"
     mqtt_password_prefix: "pass_"
     psk_prefix: "psk-"
+  thingsboard:
+    direct_mqtt_transport: true
+    telemetry_topic: "v1/devices/me/telemetry"
+    enable_rpc: false
+    rpc_request_topic: "v1/devices/me/rpc/request/+"
+    rpc_response_topic_prefix: "v1/devices/me/rpc/response/"
+    access_token_pattern: "{building}-f{floor:02d}-mqtt-{slot:02d}-token"
+    sync_access_tokens_from_api: true
+    api_base_url: "http://thingsboard:9090"
+    tenant_username: "tenant@thingsboard.org"
+    tenant_password: "tenant"

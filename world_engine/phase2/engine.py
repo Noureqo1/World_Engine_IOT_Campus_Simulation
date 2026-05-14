@@ -11,6 +11,8 @@ import asyncio
 import json
 import logging
 import time
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,11 @@ try:  # Optional dependency guard for development environments
     from gmqtt import Client as GMQTTClient
 except ImportError:  # pragma: no cover - runtime guard only
     GMQTTClient = None
+
+try:  # Optional dependency guard for development environments
+    import aiomqtt
+except ImportError:  # pragma: no cover - runtime guard only
+    aiomqtt = None
 
 try:  # Optional dependency guard for development environments
     from aiocoap import Context, Message, Code
@@ -59,12 +66,23 @@ class Phase2Config:
     mqtt_username_prefix: str = "mqtt_"
     mqtt_password_prefix: str = "pass_"
     psk_prefix: str = "psk-"
+    direct_tb_mqtt_transport: bool = False
+    tb_telemetry_topic: str = "v1/devices/me/telemetry"
+    tb_rpc_request_topic: str = "v1/devices/me/rpc/request/+"
+    tb_rpc_response_topic_prefix: str = "v1/devices/me/rpc/response/"
+    tb_enable_rpc: bool = False
+    tb_access_token_pattern: str = "{building}-f{floor:02d}-mqtt-{slot:02d}-token"
+    tb_sync_access_tokens_from_api: bool = False
+    tb_api_base_url: str = "http://thingsboard:9090"
+    tb_tenant_username: str = "tenant@thingsboard.org"
+    tb_tenant_password: str = "tenant"
 
     @classmethod
     def from_dict(cls, config: dict[str, Any]) -> "Phase2Config":
         phase2 = config.get("phase2", {})
         phase2_network = phase2.get("network", {})
         phase2_security = phase2.get("security", {})
+        phase2_tb = phase2.get("thingsboard", {})
 
         return cls(
             building_id=config.get("building", {}).get("id", "b01"),
@@ -85,6 +103,19 @@ class Phase2Config:
             mqtt_username_prefix=phase2_security.get("mqtt_username_prefix", "mqtt_"),
             mqtt_password_prefix=phase2_security.get("mqtt_password_prefix", "pass_"),
             psk_prefix=phase2_security.get("psk_prefix", "psk-"),
+            direct_tb_mqtt_transport=phase2_tb.get("direct_mqtt_transport", False),
+            tb_telemetry_topic=phase2_tb.get("telemetry_topic", "v1/devices/me/telemetry"),
+            tb_rpc_request_topic=phase2_tb.get("rpc_request_topic", "v1/devices/me/rpc/request/+"),
+            tb_rpc_response_topic_prefix=phase2_tb.get("rpc_response_topic_prefix", "v1/devices/me/rpc/response/"),
+            tb_enable_rpc=phase2_tb.get("enable_rpc", False),
+            tb_access_token_pattern=phase2_tb.get(
+                "access_token_pattern",
+                "{building}-f{floor:02d}-mqtt-{slot:02d}-token",
+            ),
+            tb_sync_access_tokens_from_api=phase2_tb.get("sync_access_tokens_from_api", False),
+            tb_api_base_url=phase2_tb.get("api_base_url", "http://thingsboard:9090"),
+            tb_tenant_username=phase2_tb.get("tenant_username", "tenant@thingsboard.org"),
+            tb_tenant_password=phase2_tb.get("tenant_password", "tenant"),
         )
 
 
@@ -100,6 +131,7 @@ class HybridNode:
     client_id: str | None = None
     username: str | None = None
     password: str | None = None
+    access_token: str | None = None
     psk_identity: str | None = None
     psk_secret: str | None = None
 
@@ -181,6 +213,65 @@ class HybridWorldEngine:
         self._seen_commands: dict[str, dict[str, float]] = {}
         self._coap_contexts: list[Any] = []
 
+    def _tb_api_request(self, method: str, path: str, token: str | None = None) -> dict[str, Any]:
+        base = self.phase2.tb_api_base_url.rstrip("/")
+        url = f"{base}{path}"
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["X-Authorization"] = f"Bearer {token}"
+        request = urllib.request.Request(url=url, method=method, headers=headers)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _resolve_access_tokens_from_thingsboard(self, mqtt_nodes: list[HybridNode]) -> None:
+        if not self.phase2.tb_sync_access_tokens_from_api:
+            return
+
+        try:
+            login_payload = json.dumps(
+                {
+                    "username": self.phase2.tb_tenant_username,
+                    "password": self.phase2.tb_tenant_password,
+                }
+            ).encode("utf-8")
+            base = self.phase2.tb_api_base_url.rstrip("/")
+            login_request = urllib.request.Request(
+                url=f"{base}/api/auth/login",
+                data=login_payload,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(login_request, timeout=10) as response:
+                login = json.loads(response.read().decode("utf-8"))
+            token = login.get("token")
+            if not token:
+                logger.warning("ThingsBoard token sync skipped: login returned no token")
+                return
+
+            synced = 0
+            for node in mqtt_nodes:
+                query = urllib.parse.quote(node.room.room_id)
+                device = self._tb_api_request(
+                    "GET",
+                    f"/api/tenant/devices?deviceName={query}",
+                    token=token,
+                )
+                device_id = device.get("id", {}).get("id")
+                if not device_id:
+                    continue
+                credentials = self._tb_api_request(
+                    "GET",
+                    f"/api/device/{device_id}/credentials",
+                    token=token,
+                )
+                access_token = credentials.get("credentialsId")
+                if access_token:
+                    node.access_token = access_token
+                    synced += 1
+            logger.info("ThingsBoard token sync complete: %s/%s MQTT nodes", synced, len(mqtt_nodes))
+        except Exception as exc:
+            logger.warning("ThingsBoard token sync failed, using configured token pattern: %s", exc)
+
     def build_nodes(self) -> tuple[list[HybridNode], list[HybridNode]]:
         """Create the 100 MQTT nodes and 100 CoAP nodes for the campus."""
         mqtt_nodes: list[HybridNode] = []
@@ -212,6 +303,11 @@ class HybridWorldEngine:
                         client_id=f"{self.phase2.building_id}-f{floor:02d}-mqtt-{slot:02d}",
                         username=f"{self.phase2.mqtt_username_prefix}{room.room_id}",
                         password=f"{self.phase2.mqtt_password_prefix}{floor:02d}_{slot:02d}",
+                        access_token=self.phase2.tb_access_token_pattern.format(
+                            building=self.phase2.building_id,
+                            floor=floor,
+                            slot=slot,
+                        ),
                     )
                 )
 
@@ -244,6 +340,17 @@ class HybridWorldEngine:
         payload = node.room.to_telemetry_payload()
         payload["transport"] = "mqtt"
         payload["protocol"] = "mqtt"
+        if self.phase2.direct_tb_mqtt_transport:
+            # ThingsBoard expects flat telemetry key-values on v1/devices/me/telemetry.
+            telemetry = {
+                "temperature": payload["sensors"]["temperature"],
+                "humidity": payload["sensors"]["humidity"],
+                "occupancy": payload["sensors"]["occupancy"],
+                "light_level": payload["sensors"]["light_level"],
+                "hvac_mode": payload["actuators"]["hvac_mode"],
+            }
+            await client.publish(self.phase2.tb_telemetry_topic, json.dumps(telemetry), qos=1)
+            return
         await client.publish(node.room.phase2_mqtt_topic, json.dumps(payload), qos=1)
 
     def _dedup_key(self, node: HybridNode, command: dict[str, Any]) -> tuple[str, str]:
@@ -262,6 +369,24 @@ class HybridWorldEngine:
         return True
 
     async def _run_mqtt_node(self, node: HybridNode) -> None:
+        if self.phase2.direct_tb_mqtt_transport:
+            if aiomqtt is None:
+                raise RuntimeError("aiomqtt is required for direct ThingsBoard MQTT transport")
+            async with aiomqtt.Client(
+                hostname=self.phase2.mqtt_host,
+                port=self.phase2.mqtt_port,
+                identifier=node.client_id or node.room.room_id,
+                username=node.access_token,
+                password="",
+            ) as client:
+                logger.info("MQTT node connected: %s", node.room.room_id)
+                while not self._shutdown_event.is_set():
+                    node.room.set_outside_temp(self.config.get("simulation", {}).get("outside_temperature", 15.0))
+                    node.room.update_physics()
+                    await self._publish_mqtt(client, node)
+                    await asyncio.sleep(self.phase2.tick_interval)
+            return
+
         if GMQTTClient is None:
             raise RuntimeError("gmqtt is required for Phase 2 MQTT nodes")
 
@@ -269,6 +394,10 @@ class HybridWorldEngine:
 
         def on_connect(_client, _flags, _rc, _properties=None):
             logger.info("MQTT node connected: %s", node.room.room_id)
+            if self.phase2.direct_tb_mqtt_transport:
+                if not self.phase2.tb_enable_rpc:
+                    return
+                return _client.subscribe(self.phase2.tb_rpc_request_topic, qos=self.phase2.command_qos)
             return _client.subscribe(node.room.phase2_command_topic, qos=self.phase2.command_qos)
 
         async def on_message(_client, _topic, payload, _qos, _properties=None):
@@ -277,6 +406,17 @@ class HybridWorldEngine:
                 command = json.loads(raw)
             except json.JSONDecodeError:
                 command = {"command": raw}
+
+            if self.phase2.direct_tb_mqtt_transport:
+                method = str(command.get("method", "")).lower()
+                params = command.get("params", {})
+                if not isinstance(params, dict):
+                    params = {}
+                command = {
+                    "command_id": _topic.rsplit("/", maxsplit=1)[-1],
+                    "hvac_active": params.get("hvac_active", params.get("enabled", method != "turnoff")),
+                }
+
             node_key, command_id = self._dedup_key(node, command)
             if not self._mark_seen(node_key, command_id):
                 logger.info("Duplicate MQTT command ignored for %s", node.room.room_id)
@@ -288,16 +428,28 @@ class HybridWorldEngine:
             ack = {
                 "room": node.room.room_id,
                 "ack": True,
-                    "command_id": command.get("command_id") or command.get("nonce") or command_id,
+                "command_id": command.get("command_id") or command.get("nonce") or command_id,
                 "transport": "mqtt",
                 "timestamp": int(time.time()),
             }
-            await _client.publish(f"{node.room.phase2_command_topic}/response", json.dumps(ack), qos=1)
+            if self.phase2.direct_tb_mqtt_transport:
+                response_topic = f"{self.phase2.tb_rpc_response_topic_prefix}{ack['command_id']}"
+                await _client.publish(response_topic, json.dumps({"success": True, "ack": ack}), qos=1)
+            else:
+                await _client.publish(f"{node.room.phase2_command_topic}/response", json.dumps(ack), qos=1)
 
         client.on_connect = on_connect
         client.on_message = on_message
-        client.set_auth_credentials(node.username, node.password)
-        client.set_last_will(node.room.phase2_status_topic, json.dumps({"room": node.room.room_id, "status": "offline"}), qos=1, retain=True)
+        if self.phase2.direct_tb_mqtt_transport:
+            client.set_auth_credentials(node.access_token, "")
+        else:
+            client.set_auth_credentials(node.username, node.password)
+            client.set_last_will(
+                node.room.phase2_status_topic,
+                json.dumps({"room": node.room.room_id, "status": "offline"}),
+                qos=1,
+                retain=True,
+            )
 
         await client.connect(self.phase2.mqtt_host, self.phase2.mqtt_port)
         try:
@@ -338,6 +490,7 @@ class HybridWorldEngine:
     async def run(self) -> None:
         """Launch the hybrid runtime."""
         mqtt_nodes, coap_nodes = self.build_nodes()
+        self._resolve_access_tokens_from_thingsboard(mqtt_nodes)
 
         logger.info(
             "Launching Phase 2: %s MQTT nodes, %s CoAP nodes, %s gateways",
